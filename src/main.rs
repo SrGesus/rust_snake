@@ -51,28 +51,28 @@ fn update_direction (window: &Window, direction: u8, new_direction: u8) -> u8 {
 
     //all this was necessary to make sure the snake doesn't walk into itself when the user
     //attemps to make it walk on the opposite direction
-    if window.is_key_down(Key::Up) {
+    if window.is_key_down(Key::Up) || window.is_key_down(Key::W) || window.is_key_down(Key::K) {
         if direction == DOWN {
             return DOWN;
         }
         return UP;
     }
 
-    if window.is_key_down(Key::Down) {
+    if window.is_key_down(Key::Down) || window.is_key_down(Key::S) || window.is_key_down(Key::J) {
         if direction == UP {
             return UP;
         }
         return DOWN;
     }
 
-    if window.is_key_down(Key::Right) {
+    if window.is_key_down(Key::Right) || window.is_key_down(Key::D) || window.is_key_down(Key::L) {
         if direction == LEFT {
             return LEFT;
         }
             return RIGHT;
     }
 
-    if window.is_key_down(Key::Left) {
+    if window.is_key_down(Key::Left) || window.is_key_down(Key::A) || window.is_key_down(Key::H) {
         if direction == RIGHT {
             return RIGHT;
         }
