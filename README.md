@@ -9,4 +9,4 @@ git clone https://github.com/SrGesus/rust_snake
 cd rust_snake
 cargo run
 ```
-Then using the arrow keys, WASD, or vim keys, try to eat the apple as the snake to grow, without hitting yourself or the walls.
+Then using the arrow keys, WASD, or vim keys (HJKL), try to eat the apple as the snake to grow, without hitting yourself or the walls.
