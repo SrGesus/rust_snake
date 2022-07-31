@@ -1,4 +1,3 @@
-
 use minifb::{Window, WindowOptions, Key};
 use std::time::Instant;
 use std::collections::VecDeque;
@@ -21,6 +20,7 @@ fn main() {
     
     let mut fruit: (u32, u32) = (20,20);
     let mut direction: u8 = RIGHT;
+    let mut new_direction :u8 = RIGHT;
     let mut snake: VecDeque<(u32, u32)> = VecDeque::new();
 
     snake.push_back((10,10));
@@ -36,8 +36,9 @@ fn main() {
     time = Instant::now();
     while time.elapsed().as_millis() < 200 {
         next_frame(&mut window, &buffer);
-        direction = update_direction(&window, direction);
+        new_direction = update_direction(&window, direction, new_direction);
     };
+    direction = new_direction;
 
     //erase board
     draw_plane(&mut buffer, &snake, &fruit, true, 18);
@@ -46,25 +47,39 @@ fn main() {
     }
 }
 
-fn update_direction (window: &Window, mut direction: u8) -> u8 {
-    window.get_keys().iter().for_each(|key|
-        match key {
-            Key::Up => if direction != DOWN {
-                    direction = UP
-                },
-            Key::Down => if direction != UP {
-                    direction = DOWN
-                },
-            Key::Right => if direction != LEFT {
-                    direction = RIGHT
-                },
-            Key::Left => if direction != RIGHT {
-                    direction = LEFT
-                },
-            _ => ()
+fn update_direction (window: &Window, direction: u8, new_direction: u8) -> u8 {
+
+    //all this was necessary to make sure the snake doesn't walk into itself when the user
+    //attemps to make it walk on the opposite direction
+    if window.is_key_down(Key::Up) {
+        if direction == DOWN {
+            return DOWN;
         }
-    );
-    direction
+        return UP;
+    }
+
+    if window.is_key_down(Key::Down) {
+        if direction == UP {
+            return UP;
+        }
+        return DOWN;
+    }
+
+    if window.is_key_down(Key::Right) {
+        if direction == LEFT {
+            return LEFT;
+        }
+            return RIGHT;
+    }
+
+    if window.is_key_down(Key::Left) {
+        if direction == RIGHT {
+            return RIGHT;
+        }
+            return LEFT;
+    }
+
+    new_direction
 }
 
 fn update_snake (snake: &mut VecDeque<(u32, u32)>, fruit: &mut (u32, u32), direction: u8) {
