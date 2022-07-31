@@ -1,7 +1,3 @@
-//temporary
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
 
 use minifb::{Window, WindowOptions, Key};
 use std::time::Instant;
@@ -147,11 +143,6 @@ fn respawn_fruit (fruit: &mut (u32, u32), snake: &mut VecDeque<(u32, u32)>) {
     if collision {
         respawn_fruit(fruit, snake);
     }
-}
-
-fn draw_fruit (buffer: &mut Vec<u32>, fruit: &(u32, u32)) {
-    let (x, y) = *fruit;
-    draw_square(buffer, (20 * x + 20 * 600 * y) as usize, 18, RED);
 }
 
 fn draw_plane(buffer: &mut Vec<u32>, snake: &VecDeque<(u32, u32)>, fruit: &(u32, u32), do_erase: bool, side: usize) {
