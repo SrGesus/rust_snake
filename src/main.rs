@@ -50,11 +50,24 @@ fn main() {
     }
 }
 
-fn update_direction (window: &Window,direction: u8) -> u8 {
-    if window.is_key_down(Key::Up) {return UP;}
-    if window.is_key_down(Key::Down) {return DOWN;}
-    if window.is_key_down(Key::Right) {return RIGHT;}
-    if window.is_key_down(Key::Left) {return LEFT;}
+fn update_direction (window: &Window, mut direction: u8) -> u8 {
+    window.get_keys().iter().for_each(|key|
+        match key {
+            Key::Up => if direction != DOWN {
+                    direction = UP
+                },
+            Key::Down => if direction != UP {
+                    direction = DOWN
+                },
+            Key::Right => if direction != LEFT {
+                    direction = RIGHT
+                },
+            Key::Left => if direction != RIGHT {
+                    direction = LEFT
+                },
+            _ => ()
+        }
+    );
     direction
 }
 
@@ -96,8 +109,8 @@ fn update_snake (snake: &mut VecDeque<(u32, u32)>, fruit: &mut (u32, u32), direc
     };
     
     //if the new snake_head collides with any of the existing snake, kill it
-    for square in snake.into_iter() {
-        if snake_head == *square {
+    for cell in snake.into_iter() {
+        if snake_head == *cell {
             is_alive = false;
             break;
         }
@@ -106,7 +119,7 @@ fn update_snake (snake: &mut VecDeque<(u32, u32)>, fruit: &mut (u32, u32), direc
     if !is_alive {
         snake.clear();
         snake.push_front((10, 10));
-        respawn_fruit(fruit);
+        respawn_fruit(fruit, snake);
         return;
     }
 
@@ -115,13 +128,25 @@ fn update_snake (snake: &mut VecDeque<(u32, u32)>, fruit: &mut (u32, u32), direc
     if snake_head != *fruit {
         snake.pop_back();
     } else {
-        respawn_fruit(fruit);
+        respawn_fruit(fruit, snake);
     }
 }
 
-fn respawn_fruit (fruit: &mut (u32, u32)) {
-    let mut new_fruit = (fastrand::u32(0..30), fastrand::u32(0..30));
+fn respawn_fruit (fruit: &mut (u32, u32), snake: &mut VecDeque<(u32, u32)>) {
+    let new_fruit = (fastrand::u32(0..30), fastrand::u32(0..30));
     *fruit = new_fruit;
+
+    //check if fruit is inside the snake
+    let mut collision = false;
+    for cell in snake.into_iter() {
+        if new_fruit == *cell {
+            collision = true;
+        }
+    }
+    
+    if collision {
+        respawn_fruit(fruit, snake);
+    }
 }
 
 fn draw_fruit (buffer: &mut Vec<u32>, fruit: &(u32, u32)) {
