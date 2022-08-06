@@ -1,12 +1,25 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+#![allow(unused_variables)]
 
-use minifb::{Window, WindowOptions, Key};
+use minifb::Key;
 use std::time::Instant;
 use std::collections::VecDeque;
-const WHITE : u32 = 16777215;
-const RED : u32 = 16711680;
-const BLACK : u32 = 0;
+use rust_snake::graphics::*;
+
+fn main() {
+    let (rows, cols, square_size) = (10, 10, 50);
+    let mut game = Game::new(rows, cols, square_size);
+    let bfs = Bfs::new(rows, cols);
+    
+    game.next_frame();
+
+    loop {
+        game.update_direction();
+        game.update_snake();
+        game.next_frame();
+    }
+}
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 enum Direction { Up, Down, Right, Left }
@@ -23,16 +36,12 @@ impl Direction {
     }
 }
 
-type Cell = (u32, u32);
+pub type Cell = (u32, u32);
 
 struct Game {
-    window: Window,
-    buffer: Vec<u32>,
+    graphics: Graphics,
     cols: u32,
     rows: u32,
-    width: usize,
-    height: usize,
-    square_size: usize,
     snake: VecDeque<Cell>,
     direction: Direction,
     fruit: Cell,
@@ -42,14 +51,9 @@ struct Game {
 impl Game {
     pub fn new(rows: usize, cols: usize, square_size: usize) -> Game {
         let mut game = Game {
-            window: Window::new("Rusty Snake", cols*square_size, rows*square_size, WindowOptions::default())
-                .expect("Minifb was unable to create window."),
-            buffer: vec![BLACK; cols*rows*square_size*square_size],
+            graphics: Graphics::new(rows, cols, square_size),
             cols: cols as u32,
             rows: rows as u32,
-            width: cols*square_size,
-            height: rows*square_size,
-            square_size: square_size,
             snake: VecDeque::new(),
             direction: Direction::Right,
             fruit: (fastrand::u32(1..cols as u32), fastrand::u32(1..rows as u32)),
@@ -67,9 +71,9 @@ impl Game {
 
         let time = Instant::now();
         while time.elapsed().as_millis() < self.delay {
-            self.refresh();
+            self.graphics.refresh();
 
-            self.window.get_keys().iter().for_each(|key|
+            self.graphics.window.get_keys().iter().for_each(|key|
                 match key {
                     Key::Up | Key::W => new_direction = Up,
                     Key::Down | Key::S => new_direction = Down,
@@ -91,7 +95,6 @@ impl Game {
 
         if !is_alive {
             self.kill_snake();
-            self.snake.push_front((0, 0));
             self.respawn_fruit();
             return;
         }
@@ -163,6 +166,8 @@ impl Game {
                 delay -= 4;
             }
         }
+        self.snake.push_front((0, 0));
+        self.direction = Direction::Right;
     }
 
     fn respawn_fruit(&mut self) {
@@ -181,51 +186,37 @@ impl Game {
             self.respawn_fruit();
         }
     }
+	pub fn next_frame(&mut self) {
+		self.graphics.next_frame(&self.snake, self.fruit);
+	}
+     
+}
 
-    //graphics
-    pub fn next_frame(&mut self) {
-        self.buffer.fill(BLACK);
-        self.draw_plane();
-        self.refresh();
-    }
 
-    fn draw_plane(&mut self) {
-        for (x, y) in &self.snake {
-            let corner = self.square_size * *x as usize + self.square_size * self.width * *y as usize;
-            self.buffer = self.draw_square(corner, WHITE);
+struct Bfs {
+    grid: Vec<Vec<bool>>,
+    visited: Vec<Vec<bool>>,
+    distance: Vec<Vec<u32>>,
+    source: Vec<Vec<(u32, u32)>>,
+}
+
+impl Bfs {
+    pub fn new(rows: usize, cols: usize) -> Bfs {
+        Bfs {
+            grid: vec![vec![false; rows]; cols],
+            visited: vec![vec![false; rows]; cols],
+            distance: vec![vec![u32::MAX; rows]; cols],
+            source: vec![vec![(0, 0); rows]; cols],
         }
-        let (x, y) = self.fruit;
-        let corner = self.square_size * x as usize + self.square_size * self.width * y as usize;
-        self.buffer = self.draw_square(corner, RED);
-    }
-    
-    fn draw_square(&self, corner: usize, color: u32) -> Vec<u32> {
-        let mut buffer = self.buffer.to_vec();
-        for i in 1..self.square_size-2 {
-            for j in 1..self.square_size-2 {
-                buffer[i * self.width + j + corner] = color;
-            }
-        }
-        buffer
     }
 
-    pub fn refresh(&mut self) {
-        self.window.update_with_buffer(&self.buffer, self.width, self.height)
-            .expect("Couldn't refresh window.");
+    pub fn update(&mut self, game: &Game) {
+        for (x, y) in &game.snake {
+            self.grid[*x as usize][*y as usize] = true;
+        }
     }
 }
 
-fn main() {
-    let mut game = Game::new(10, 10, 50);
-    
-    game.next_frame();
-
-    loop {
-        game.update_direction();
-        game.update_snake();
-        game.next_frame();
-    }
-}
 
 fn sleep(delay: u128) {
     let time = Instant::now();
