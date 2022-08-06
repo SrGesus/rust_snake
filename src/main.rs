@@ -1,212 +1,235 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use minifb::{Window, WindowOptions, Key};
 use std::time::Instant;
 use std::collections::VecDeque;
-
 const WHITE : u32 = 16777215;
 const RED : u32 = 16711680;
 const BLACK : u32 = 0;
 
-const UP : u8 = 1;
-const DOWN : u8 = 2;
-const RIGHT : u8 = 3;
-const LEFT : u8 = 4;
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+enum Direction { Up, Down, Right, Left }
+
+impl Direction {
+    pub fn opposite(&self) -> Direction {
+        use crate::Direction::*;
+        match self {
+            Up => Down,
+            Down => Up,
+            Right => Left,
+            Left => Right,
+        }
+    }
+}
+
+type Cell = (u32, u32);
+
+struct Game {
+    window: Window,
+    buffer: Vec<u32>,
+    cols: u32,
+    rows: u32,
+    width: usize,
+    height: usize,
+    square_size: usize,
+    snake: VecDeque<Cell>,
+    direction: Direction,
+    fruit: Cell,
+    delay: u128
+}
+
+impl Game {
+    pub fn new(rows: usize, cols: usize, square_size: usize) -> Game {
+        let mut game = Game {
+            window: Window::new("Rusty Snake", cols*square_size, rows*square_size, WindowOptions::default())
+                .expect("Minifb was unable to create window."),
+            buffer: vec![BLACK; cols*rows*square_size*square_size],
+            cols: cols as u32,
+            rows: rows as u32,
+            width: cols*square_size,
+            height: rows*square_size,
+            square_size: square_size,
+            snake: VecDeque::new(),
+            direction: Direction::Right,
+            fruit: (fastrand::u32(1..cols as u32), fastrand::u32(1..rows as u32)),
+            delay: 100
+        };
+        game.snake.push_back((0, 0));
+
+        game
+    }
+    
+    pub fn update_direction(&mut self) {
+        use crate::Direction::*;
+
+        let mut new_direction = self.direction;
+
+        let time = Instant::now();
+        while time.elapsed().as_millis() < self.delay {
+            self.refresh();
+
+            self.window.get_keys().iter().for_each(|key|
+                match key {
+                    Key::Up | Key::W => new_direction = Up,
+                    Key::Down | Key::S => new_direction = Down,
+                    Key::Right | Key::D => new_direction = Right,
+                    Key::Left | Key::A => new_direction = Left,
+                    _ => ()
+                }
+            );
+        }
+
+        if new_direction != self.direction.opposite() {
+            self.direction = new_direction;
+        }
+    }
+
+    pub fn update_snake(&mut self) {
+        let mut is_alive = true;
+        let snake_head = self.get_snake_head(&mut is_alive);
+
+        if !is_alive {
+            self.kill_snake();
+            self.snake.push_front((0, 0));
+            self.respawn_fruit();
+            return;
+        }
+
+        self.snake.push_front(snake_head);
+
+        if snake_head != self.fruit {
+            self.snake.pop_back();
+        } else {
+            self.respawn_fruit();
+        }
+    }
+
+    //return the new snake head
+    fn get_snake_head(&mut self, is_alive: &mut bool) -> (u32, u32) {
+        //move the snake head in the inputed direction and clamp it to the plane
+        let (x, y) = *self.snake.front().unwrap();
+        
+        use crate::Direction::*;
+        let snake_head = match self.direction {
+
+            Up => if y == 0 {
+                *is_alive = false;
+                (x, y)
+            } else {
+                (x, y-1)
+            }
+
+            Down => if y == self.rows-1 {
+                *is_alive = false;
+                (x, y)
+            } else {
+                (x, y+1)
+            }
+
+            Right => if x == self.cols-1 {
+                *is_alive = false;
+                (x, y) 
+            } else {
+                (x+1, y)
+            }
+
+            Left => if x == 0 {
+                *is_alive = false;
+                (x, y)
+            } else {
+                (x-1, y)
+            }
+        };
+
+        //if the new snake_head collides with any of the existing snake, kill it
+        for cell in &self.snake {
+            if snake_head == *cell {
+                *is_alive = false;
+                break;
+            }
+        }
+        snake_head
+    }
+    
+    fn kill_snake(&mut self) {
+        println!("Your score was: {}", self.snake.len());
+        let mut delay = 100;
+        while self.snake.front() != None {
+            self.snake.pop_front();
+            sleep(delay);
+            self.next_frame();
+            if delay > 10 {
+                delay -= 4;
+            }
+        }
+    }
+
+    fn respawn_fruit(&mut self) {
+        let new_fruit = (fastrand::u32(0..self.cols), fastrand::u32(0..self.rows));
+        self.fruit = new_fruit;
+
+        //make sure fruit doesn't spawn inside the snake
+        let mut collision = false;
+        for cell in &self.snake {
+            if new_fruit == *cell {
+                collision = true;
+            }
+        }
+
+        if collision {
+            self.respawn_fruit();
+        }
+    }
+
+    //graphics
+    pub fn next_frame(&mut self) {
+        self.buffer.fill(BLACK);
+        self.draw_plane();
+        self.refresh();
+    }
+
+    fn draw_plane(&mut self) {
+        for (x, y) in &self.snake {
+            let corner = self.square_size * *x as usize + self.square_size * self.width * *y as usize;
+            self.buffer = self.draw_square(corner, WHITE);
+        }
+        let (x, y) = self.fruit;
+        let corner = self.square_size * x as usize + self.square_size * self.width * y as usize;
+        self.buffer = self.draw_square(corner, RED);
+    }
+    
+    fn draw_square(&self, corner: usize, color: u32) -> Vec<u32> {
+        let mut buffer = self.buffer.to_vec();
+        for i in 1..self.square_size-2 {
+            for j in 1..self.square_size-2 {
+                buffer[i * self.width + j + corner] = color;
+            }
+        }
+        buffer
+    }
+
+    pub fn refresh(&mut self) {
+        self.window.update_with_buffer(&self.buffer, self.width, self.height)
+            .expect("Couldn't refresh window.");
+    }
+}
 
 fn main() {
-
-    //create window
-    let mut window = Window::new("Rusty Snake", 600, 600, WindowOptions::default())
-        .expect("Minifb was unable to create window.");
-    let mut buffer: Vec<u32> = vec![BLACK; 600*600];
+    let mut game = Game::new(10, 10, 50);
     
-    let mut fruit: (u32, u32) = (20,20);
-    let mut direction: u8 = RIGHT;
-    let mut new_direction: u8 = RIGHT;
-    let mut snake: VecDeque<(u32, u32)> = VecDeque::new();
-
-    snake.push_back((10,10));
-    snake.push_back((10,11));
-    snake.push_back((10,12));
-    snake.push_back((10,13));
-    
-    let mut time: std::time::Instant;
+    game.next_frame();
 
     loop {
-
-    time = Instant::now();
-    while time.elapsed().as_millis() < 100 {
-        refresh_window(&mut window, &buffer);
-        new_direction = update_direction(&window, direction, new_direction);
-    };
-    direction = new_direction;
-
-    update_snake(&mut window, &mut buffer, &mut snake, &mut fruit, direction);
-    
-    next_frame(&mut window, &mut buffer, &snake, &fruit);
+        game.update_direction();
+        game.update_snake();
+        game.next_frame();
     }
 }
 
-fn update_direction (window: &Window, direction: u8, new_direction: u8) -> u8 {
-
-    //all this was necessary to make sure the snake doesn't walk into itself when the user
-    //attemps to make it walk on the opposite direction
-    if window.is_key_down(Key::Up) || window.is_key_down(Key::W) || window.is_key_down(Key::K) {
-        if direction == DOWN {
-            return DOWN;
-        }
-        return UP;
-    }
-
-    if window.is_key_down(Key::Down) || window.is_key_down(Key::S) || window.is_key_down(Key::J) {
-        if direction == UP {
-            return UP;
-        }
-        return DOWN;
-    }
-
-    if window.is_key_down(Key::Right) || window.is_key_down(Key::D) || window.is_key_down(Key::L) {
-        if direction == LEFT {
-            return LEFT;
-        }
-            return RIGHT;
-    }
-
-    if window.is_key_down(Key::Left) || window.is_key_down(Key::A) || window.is_key_down(Key::H) {
-        if direction == RIGHT {
-            return RIGHT;
-        }
-            return LEFT;
-    }
-
-    new_direction
-}
-
-fn update_snake (window: &mut Window, buffer: &mut Vec<u32>, snake: &mut VecDeque<(u32, u32)>, fruit: &mut (u32, u32), direction: u8) {
-
-    let mut is_alive = true;
-    let snake_head = move_snake_head(snake, direction, &mut is_alive);
-
-    if !is_alive {
-        kill_snake(window, buffer, snake, fruit);
-        snake.push_front((10, 10));
-        respawn_fruit(fruit, snake);
-        return;
-    }
-    
-    snake.push_front(snake_head);
-
-    if snake_head != *fruit {
-        snake.pop_back();
-    } else {
-        respawn_fruit(fruit, snake);
-    }
-}
-
-//move the head and return whether it survived
-fn move_snake_head(snake: &mut VecDeque<(u32, u32)>, direction: u8, is_alive: &mut bool) -> (u32, u32) {
-    //move the snake in the inputed direction and clamp it to the plane
-    let (x, y) = *snake.front().unwrap();
-    let snake_head = match direction {
-        UP => if y == 0 {
-            *is_alive = false;
-            (x, y)
-        } else {
-            (x, y-1)
-        }
-
-        DOWN => if y == 29 {
-            *is_alive = false;
-            (x, y)
-        } else {
-            (x, y+1)
-        }
-
-        RIGHT => if x == 29 {
-            *is_alive = false;
-            (x, y) 
-        } else {
-            (x+1, y)
-        }
-
-        LEFT => if x == 0 {
-            *is_alive = false;
-            (x, y)
-        } else {
-            (x-1, y)
-        }
-
-        _ => (x, y)
-    };
-    
-    //if the new snake_head collides with any of the existing snake, kill it
-    for cell in snake.into_iter() {
-        if snake_head == *cell {
-            *is_alive = false;
-            break;
-        }
-    }
-    snake_head
-}
-
-fn kill_snake(window: &mut Window, buffer: &mut Vec<u32>, snake: &mut VecDeque<(u32, u32)>, fruit: &(u32, u32)) {
-	println!("Your score: {}", snake.len());
-	let mut interval = 100;
-    while snake.front() != None {
-        snake.pop_front();
-        delay(interval);
-        next_frame(window, buffer, snake, fruit);
-        if interval > 10 {
-			interval -= 2;
-		}
-    }
-}
-
-fn respawn_fruit (fruit: &mut (u32, u32), snake: &mut VecDeque<(u32, u32)>) {
-    let new_fruit = (fastrand::u32(0..30), fastrand::u32(0..30));
-    *fruit = new_fruit;
-
-    //check if fruit is inside the snake
-    let mut collision = false;
-    for cell in snake.into_iter() {
-        if new_fruit == *cell {
-            collision = true;
-        }
-    }
-    
-    if collision {
-        respawn_fruit(fruit, snake);
-    }
-}
-
-fn next_frame(window: &mut Window, buffer: &mut Vec<u32>, snake: &VecDeque<(u32, u32)>, fruit: &(u32, u32)) {
-    buffer.fill(BLACK);
-    draw_plane(buffer, snake, fruit);
-    refresh_window(window, buffer);
-}
-
-fn draw_plane(buffer: &mut Vec<u32>, snake: &VecDeque<(u32, u32)>, fruit: &(u32, u32)) {
-    for (x, y) in snake {
-        draw_square(buffer, (20*x + 20*600*y) as usize, 18, WHITE);
-    }
-    let (x, y) = fruit;
-    draw_square(buffer, (20*x + 20*600*y) as usize, 18, RED);
-}
-
-fn draw_square(buffer: &mut Vec<u32>, corner: usize, side: usize, color: u32) {
-    for i in 1..side {
-        for j in 1..side {
-                buffer[i*600+j+corner] = color;
-        }
-    }
-}
-
-fn refresh_window(window: &mut Window, buffer: &Vec<u32>) {
-    window.update_with_buffer(&buffer, 600, 600)
-        .expect("Couldn't refresh window.");
-}
-
-fn delay(delay: u128) {
+fn sleep(delay: u128) {
     let time = Instant::now();
     while time.elapsed().as_millis() < delay {
         //do nothing
-    };
+    }
 }
