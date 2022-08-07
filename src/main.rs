@@ -8,15 +8,16 @@ use std::collections::VecDeque;
 use rust_snake::graphics::*;
 
 fn main() {
-    let (rows, cols, square_size) = (10, 10, 50);
+    let (rows, cols, square_size) = (10, 10, 30);
     let mut game = Game::new(rows, cols, square_size);
-    let bfs = Bfs::new(rows, cols);
+    let mut bfs = Bfs::new(rows, cols);
     
     game.next_frame();
 
     loop {
         game.update_direction();
         game.update_snake();
+        bfs.update(&game);
         game.next_frame();
     }
 }
@@ -33,6 +34,38 @@ impl Direction {
             Right => Left,
             Left => Right,
         }
+    }
+
+    pub fn get_direction(source: Cell, destination: Cell) -> Direction {
+        let (x, y) = source;
+        let (nx, ny) = destination;
+        
+        let (x, y) = ((nx-x) as i8, (ny-y) as i8);
+        
+        use crate::Direction::*;
+
+        match (x, y) {
+            (0, 1) => Up,
+            (0, -1) => Down,
+            (1, 0) => Right,
+            (-1, 0) => Left,
+            _ => Up 
+        }
+    }
+    
+    pub fn get_vector(self) -> (i32, i32) {
+        use crate::Direction::*;
+        match self {
+            Up => (0, 1),
+            Down => (0, -1),
+            Right => (1, 0),
+            Left => (-1, 0)
+        }
+    }
+
+    pub fn iter() -> [Direction; 4] {
+        use crate::Direction::*;
+        [Up, Down, Right, Left]
     }
 }
 
@@ -194,26 +227,111 @@ impl Game {
 
 
 struct Bfs {
+    rows: usize,
+    cols: usize,
     grid: Vec<Vec<bool>>,
+    source: Vec<Vec<Cell>>,
+    cost: Vec<Vec<u32>>,
     visited: Vec<Vec<bool>>,
-    distance: Vec<Vec<u32>>,
-    source: Vec<Vec<(u32, u32)>>,
+    //source, destination, cost
+    queue: VecDeque<(Cell, Cell, u32)>,
+    path: VecDeque<Cell>
 }
 
 impl Bfs {
     pub fn new(rows: usize, cols: usize) -> Bfs {
         Bfs {
+            rows: rows,
+            cols: cols,
             grid: vec![vec![false; rows]; cols],
-            visited: vec![vec![false; rows]; cols],
-            distance: vec![vec![u32::MAX; rows]; cols],
             source: vec![vec![(0, 0); rows]; cols],
+            cost: vec![vec![u32::MAX; rows]; cols],
+            visited: vec![vec![false; rows]; cols],
+            queue: VecDeque::new(),
+            path: VecDeque::new()
         }
     }
 
     pub fn update(&mut self, game: &Game) {
+        self.grid = vec![vec![false; self.rows]; self.cols]; //reset the grid
         for (x, y) in &game.snake {
             self.grid[*x as usize][*y as usize] = true;
         }
+        for x in 0..self.cols {
+            println!(" ");
+            for y in 0..self.rows {
+                print!("{} ", self.grid[x][y] as u8);
+            }
+        }
+        println!("\n\n");
+        
+        while self.queue.front() != None {
+
+        }
+        
+    }
+    
+    //returns whether the new cell is in bounds
+    fn in_bounds(&mut self, source: Cell, direction: Direction) -> bool {
+        use crate::Direction::*;
+        let (x, y) = source;
+
+        match direction {
+            Up => if y == 0 {
+                false
+            } else {
+                true
+            },
+            Down => if y == (self.rows-1) as u32 {
+                false
+            } else {
+                true
+            },
+            Right => if x == (self.cols-1) as u32 {
+                false
+            } else {
+                true
+            },
+            Left => if x == 0 {
+                false
+            } else {
+                true
+            }
+        }
+    }
+
+    fn add_edges(&mut self, source: Cell, cost: u32) {
+        let (x, y) = source;
+        
+        for direction in Direction::iter() {
+            if self.in_bounds(source, direction) {
+                let (dx, dy) = direction.get_vector();
+                let nx = (x as i32 + dx) as u32;
+                let ny = (y as i32 + dy) as u32;
+
+                if !self.visited[nx as usize][ny as usize] {
+                    self.queue.push_back((source, (nx, ny), cost+1));
+                }
+            }
+        }
+
+
+        /*
+        if x > 0 {
+            self.queue.push_back((source, (x-1, y), cost + 1));
+        }
+
+        if x < (self.cols-1) as u32 {
+            self.queue.push_back((source, (x+1, y), cost + 1));
+        }
+
+        if y > 0 {
+            self.queue.push_back((source, (x, y-1), cost + 1));
+        }
+        
+        if y < (self.rows-1) as u32 {
+            self.queue.push_back((source, (x, y+1), cost + 1));
+        }*/
     }
 }
 
