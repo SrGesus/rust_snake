@@ -8,21 +8,22 @@ use std::collections::VecDeque;
 use rust_snake::graphics::*;
 
 fn main() {
-    let (rows, cols, square_size) = (10, 10, 30);
+    let (rows, cols, square_size) = (15, 20, 30);
     let mut game = Game::new(rows, cols, square_size);
     let mut bfs = Bfs::new(rows, cols);
     
     game.next_frame();
-
+    bfs.update(&game);
+    
     loop {
-        game.update_direction();
-        game.update_snake();
-        bfs.update(&game);
+        bfs.update_direction(&mut game);
+        //sleep(1);
+        game.update_snake(&mut bfs);
         game.next_frame();
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 enum Direction { Up, Down, Right, Left }
 
 impl Direction {
@@ -40,24 +41,24 @@ impl Direction {
         let (x, y) = source;
         let (nx, ny) = destination;
         
-        let (x, y) = ((nx-x) as i8, (ny-y) as i8);
+        let (x, y) = (nx as i8 - x as i8, ny as i8 - y as i8);
         
         use crate::Direction::*;
 
         match (x, y) {
-            (0, 1) => Up,
-            (0, -1) => Down,
+            (0, -1) => Up,
+            (0, 1) => Down,
             (1, 0) => Right,
             (-1, 0) => Left,
-            _ => Up 
+            _ => Right
         }
     }
     
     pub fn get_vector(self) -> (i32, i32) {
         use crate::Direction::*;
         match self {
-            Up => (0, 1),
-            Down => (0, -1),
+            Up => (0, -1),
+            Down => (0, 1),
             Right => (1, 0),
             Left => (-1, 0)
         }
@@ -122,13 +123,14 @@ impl Game {
         }
     }
 
-    pub fn update_snake(&mut self) {
+    pub fn update_snake(&mut self, bfs: &mut Bfs) {
         let mut is_alive = true;
         let snake_head = self.get_snake_head(&mut is_alive);
 
         if !is_alive {
             self.kill_snake();
             self.respawn_fruit();
+            bfs.update(self);
             return;
         }
 
@@ -138,6 +140,7 @@ impl Game {
             self.snake.pop_back();
         } else {
             self.respawn_fruit();
+            bfs.update(self);
         }
     }
 
@@ -231,10 +234,9 @@ struct Bfs {
     cols: usize,
     grid: Vec<Vec<bool>>,
     source: Vec<Vec<Cell>>,
-    cost: Vec<Vec<u32>>,
     visited: Vec<Vec<bool>>,
-    //source, destination, cost
-    queue: VecDeque<(Cell, Cell, u32)>,
+    //source, cost
+    queue: VecDeque<Cell>,
     path: VecDeque<Cell>
 }
 
@@ -245,7 +247,6 @@ impl Bfs {
             cols: cols,
             grid: vec![vec![false; rows]; cols],
             source: vec![vec![(0, 0); rows]; cols],
-            cost: vec![vec![u32::MAX; rows]; cols],
             visited: vec![vec![false; rows]; cols],
             queue: VecDeque::new(),
             path: VecDeque::new()
@@ -253,24 +254,72 @@ impl Bfs {
     }
 
     pub fn update(&mut self, game: &Game) {
-        self.grid = vec![vec![false; self.rows]; self.cols]; //reset the grid
+        let (rows, cols) = (self.rows, self.cols);
+        *self = Bfs::new(rows, cols);
         for (x, y) in &game.snake {
             self.grid[*x as usize][*y as usize] = true;
         }
-        for x in 0..self.cols {
-            println!(" ");
-            for y in 0..self.rows {
-                print!("{} ", self.grid[x][y] as u8);
-            }
-        }
-        println!("\n\n");
         
-        while self.queue.front() != None {
+        let (x, y) = *game.snake.front().unwrap();
+        self.queue.push_back((x, y));
+        let snake_head = (x, y);
+        self.source[x as usize][y as usize] = (x, y);
+        let (x, y) = game.fruit;
+        let (x, y) = (x as usize, y as usize);
 
+        while self.queue.front() != None {
+            //add the adjacent squares 
+            let source = self.queue.pop_front().unwrap();
+            self.add_edges(source);
+
+            //if the fruit has been reached
+            if self.visited[x][y] == true {
+                self.get_path(snake_head, game.fruit);
+                break;
+            }
         }
         
     }
-    
+
+    fn get_path(&mut self, snake_head: Cell, fruit: Cell) {
+        self.path = VecDeque::new();
+        self.path.push_front(fruit);
+        let (x, y) = fruit;
+        let (x, y) = (x as usize, y as usize);
+        let mut cell = self.source[x as usize][y as usize];
+
+        while cell != snake_head {
+            let (x, y) = cell;
+            let (cx, cy) = cell;
+            let (hx, hy) = snake_head;
+            self.path.push_front(cell);
+            cell = self.source[x as usize][y as usize];
+        }
+    }
+
+    pub fn update_direction(&mut self, game: &mut Game) {
+        let (x, y) = *game.snake.front().unwrap();
+        let (nx, ny) = self.path.pop_front().unwrap();
+        game.direction = Direction::get_direction((x, y), (nx, ny));
+    }
+
+    fn add_edges(&mut self, source: Cell) {
+        let (x, y) = source;
+        
+        for direction in Direction::iter() {
+            if self.in_bounds(source, direction) {
+                let (dx, dy) = direction.get_vector();
+                let nx = (x as i32 + dx) as usize;
+                let ny = (y as i32 + dy) as usize;
+                if !self.visited[nx][ny] && !self.grid[nx][ny]{
+                    self.queue.push_back((nx as u32, ny as u32));
+                    self.source[nx][ny] = source;
+                    self.visited[nx][ny] = true;
+                }
+            }
+        }
+    }
+
     //returns whether the new cell is in bounds
     fn in_bounds(&mut self, source: Cell, direction: Direction) -> bool {
         use crate::Direction::*;
@@ -298,40 +347,6 @@ impl Bfs {
                 true
             }
         }
-    }
-
-    fn add_edges(&mut self, source: Cell, cost: u32) {
-        let (x, y) = source;
-        
-        for direction in Direction::iter() {
-            if self.in_bounds(source, direction) {
-                let (dx, dy) = direction.get_vector();
-                let nx = (x as i32 + dx) as u32;
-                let ny = (y as i32 + dy) as u32;
-
-                if !self.visited[nx as usize][ny as usize] {
-                    self.queue.push_back((source, (nx, ny), cost+1));
-                }
-            }
-        }
-
-
-        /*
-        if x > 0 {
-            self.queue.push_back((source, (x-1, y), cost + 1));
-        }
-
-        if x < (self.cols-1) as u32 {
-            self.queue.push_back((source, (x+1, y), cost + 1));
-        }
-
-        if y > 0 {
-            self.queue.push_back((source, (x, y-1), cost + 1));
-        }
-        
-        if y < (self.rows-1) as u32 {
-            self.queue.push_back((source, (x, y+1), cost + 1));
-        }*/
     }
 }
 
