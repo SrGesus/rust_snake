@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 const WHITE : u32 = 16777215;
 const RED : u32 = 16711680;
 const BLACK : u32 = 0;
-type Cell = (u32, u32);
+type Cell = (usize, usize);
 
 pub struct Graphics {
     pub window: Window,

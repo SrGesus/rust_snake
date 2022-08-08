@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use rust_snake::graphics::*;
 
 fn main() {
-    let (rows, cols, square_size) = (15, 20, 30);
+    let (rows, cols, square_size) = (20, 20, 20);
     let mut game = Game::new(rows, cols, square_size);
     let mut bfs = Bfs::new(rows, cols);
     
@@ -17,6 +17,7 @@ fn main() {
     
     loop {
         bfs.update_direction(&mut game);
+//        game.update_direction();
         //sleep(1);
         game.update_snake(&mut bfs);
         game.next_frame();
@@ -44,7 +45,20 @@ impl Direction {
         let (x, y) = (nx as i8 - x as i8, ny as i8 - y as i8);
         
         use crate::Direction::*;
-
+        
+        if y > 1 {
+            return Up
+        }
+        if y < -1 {
+            return Down
+        }
+        if x > 1 {
+            return Left
+        }
+        if y < -1 {
+            return Right
+        }
+        
         match (x, y) {
             (0, -1) => Up,
             (0, 1) => Down,
@@ -70,12 +84,12 @@ impl Direction {
     }
 }
 
-pub type Cell = (u32, u32);
+pub type Cell = (usize, usize);
 
 struct Game {
     graphics: Graphics,
-    cols: u32,
-    rows: u32,
+    cols: usize,
+    rows: usize,
     snake: VecDeque<Cell>,
     direction: Direction,
     fruit: Cell,
@@ -86,12 +100,12 @@ impl Game {
     pub fn new(rows: usize, cols: usize, square_size: usize) -> Game {
         let mut game = Game {
             graphics: Graphics::new(rows, cols, square_size),
-            cols: cols as u32,
-            rows: rows as u32,
+            cols: cols,
+            rows: rows,
             snake: VecDeque::new(),
             direction: Direction::Right,
-            fruit: (fastrand::u32(1..cols as u32), fastrand::u32(1..rows as u32)),
-            delay: 100
+            fruit: (fastrand::usize(2..cols-1), fastrand::usize(2..rows-1)),
+            delay: 50
         };
         game.snake.push_back((0, 0));
 
@@ -145,7 +159,7 @@ impl Game {
     }
 
     //return the new snake head
-    fn get_snake_head(&mut self, is_alive: &mut bool) -> (u32, u32) {
+    fn get_snake_head(&mut self, is_alive: &mut bool) -> (usize, usize) {
         //move the snake head in the inputed direction and clamp it to the plane
         let (x, y) = *self.snake.front().unwrap();
         
@@ -153,29 +167,25 @@ impl Game {
         let snake_head = match self.direction {
 
             Up => if y == 0 {
-                *is_alive = false;
-                (x, y)
+                (x, self.rows-1)
             } else {
                 (x, y-1)
             }
 
             Down => if y == self.rows-1 {
-                *is_alive = false;
-                (x, y)
+                (x, 0)
             } else {
                 (x, y+1)
             }
 
             Right => if x == self.cols-1 {
-                *is_alive = false;
-                (x, y) 
+                (0, y) 
             } else {
                 (x+1, y)
             }
 
             Left => if x == 0 {
-                *is_alive = false;
-                (x, y)
+                (self.cols-1, y)
             } else {
                 (x-1, y)
             }
@@ -193,7 +203,7 @@ impl Game {
     
     fn kill_snake(&mut self) {
         println!("Your score was: {}", self.snake.len());
-        let mut delay = 100;
+        let mut delay = self.delay;
         while self.snake.front() != None {
             self.snake.pop_front();
             sleep(delay);
@@ -207,7 +217,7 @@ impl Game {
     }
 
     fn respawn_fruit(&mut self) {
-        let new_fruit = (fastrand::u32(0..self.cols), fastrand::u32(0..self.rows));
+        let new_fruit = (fastrand::usize(0..self.cols), fastrand::usize(0..self.rows));
         self.fruit = new_fruit;
 
         //make sure fruit doesn't spawn inside the snake
@@ -257,15 +267,15 @@ impl Bfs {
         let (rows, cols) = (self.rows, self.cols);
         *self = Bfs::new(rows, cols);
         for (x, y) in &game.snake {
-            self.grid[*x as usize][*y as usize] = true;
+            self.grid[*x][*y] = true;
         }
         
         let (x, y) = *game.snake.front().unwrap();
         self.queue.push_back((x, y));
         let snake_head = (x, y);
-        self.source[x as usize][y as usize] = (x, y);
+        self.source[x][y] = (x, y);
         let (x, y) = game.fruit;
-        let (x, y) = (x as usize, y as usize);
+        let (x, y) = (x, y);
 
         while self.queue.front() != None {
             //add the adjacent squares 
@@ -285,19 +295,27 @@ impl Bfs {
         self.path = VecDeque::new();
         self.path.push_front(fruit);
         let (x, y) = fruit;
-        let (x, y) = (x as usize, y as usize);
-        let mut cell = self.source[x as usize][y as usize];
+        let (x, y) = (x, y);
+        let mut cell = self.source[x][y];
 
         while cell != snake_head {
             let (x, y) = cell;
             let (cx, cy) = cell;
             let (hx, hy) = snake_head;
             self.path.push_front(cell);
-            cell = self.source[x as usize][y as usize];
+            cell = self.source[x][y];
         }
     }
 
     pub fn update_direction(&mut self, game: &mut Game) {
+        if self.path.is_empty() {
+            game.kill_snake();
+            game.respawn_fruit();
+            self.update(game);
+            self.update_direction(game);
+            return;
+    
+        }
         let (x, y) = *game.snake.front().unwrap();
         let (nx, ny) = self.path.pop_front().unwrap();
         game.direction = Direction::get_direction((x, y), (nx, ny));
@@ -307,44 +325,44 @@ impl Bfs {
         let (x, y) = source;
         
         for direction in Direction::iter() {
-            if self.in_bounds(source, direction) {
-                let (dx, dy) = direction.get_vector();
-                let nx = (x as i32 + dx) as usize;
-                let ny = (y as i32 + dy) as usize;
+//            if self.in_bounds(source, direction) {
+//                let (dx, dy) = direction.get_vector();
+//                let nx = (x as i32 + dx) as usize;
+//                let ny = (y as i32 + dy) as usize;
+                let (nx, ny) = self.get_next_cell(source, direction);
                 if !self.visited[nx][ny] && !self.grid[nx][ny]{
-                    self.queue.push_back((nx as u32, ny as u32));
+                    self.queue.push_back((nx, ny));
                     self.source[nx][ny] = source;
                     self.visited[nx][ny] = true;
                 }
-            }
         }
     }
 
     //returns whether the new cell is in bounds
-    fn in_bounds(&mut self, source: Cell, direction: Direction) -> bool {
+    fn get_next_cell(&mut self, source: Cell, direction: Direction) -> (usize, usize) {
         use crate::Direction::*;
         let (x, y) = source;
 
         match direction {
             Up => if y == 0 {
-                false
+                (x, self.rows-1)
             } else {
-                true
+                (x, y-1)
             },
-            Down => if y == (self.rows-1) as u32 {
-                false
+            Down => if y == self.rows-1 {
+                (x, 0)
             } else {
-                true
+                (x, y+1)
             },
-            Right => if x == (self.cols-1) as u32 {
-                false
+            Right => if x == (self.cols-1) {
+                (0, y)
             } else {
-                true
+                (x+1, y)
             },
             Left => if x == 0 {
-                false
+                (self.cols-1, y)
             } else {
-                true
+                (x-1, y)
             }
         }
     }
